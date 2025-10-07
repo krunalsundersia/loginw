@@ -264,14 +264,14 @@
 <body>
     <div class="container">
         <div class="left-panel">
-            <h1>Welcome Back</h1>
-            <p>Sign in to your account to continue accessing our platform. With Google authentication, you can securely log in with just one click.</p>
+            <h1>Welcome to Pentad AI</h1>
+            <p>Sign in to access our multi-perspective AI chat platform. With Google authentication, you can securely log in with just one click and experience conversations with five different AI personalities.</p>
         </div>
         
         <div class="right-panel">
             <div class="logo">
-                <i class="fas fa-fire"></i>
-                <h2>Firebase Auth</h2>
+                <i class="fas fa-robot"></i>
+                <h2>Pentad AI Chat</h2>
             </div>
             
             <div class="login-form">
@@ -323,15 +323,15 @@
     
     <script>
         // Firebase configuration
-       const firebaseConfig = {
-  apiKey: "AIzaSyC4BTap2HJbjEzzY3nr0uy7r2-TChvaihM",
-  authDomain: "trial-6c8cd.firebaseapp.com",
-  projectId: "trial-6c8cd",
-  storageBucket: "trial-6c8cd.firebasestorage.app",
-  messagingSenderId: "270058912931",
-  appId: "1:270058912931:web:c85a8889aefec013315316",
-  measurementId: "G-CF7XZZ8E2Z"
-};
+        const firebaseConfig = {
+            apiKey: "AIzaSyC4BTap2HJbjEzzY3nr0uy7r2-TChvaihM",
+            authDomain: "trial-6c8cd.firebaseapp.com",
+            projectId: "trial-6c8cd",
+            storageBucket: "trial-6c8cd.firebasestorage.app",
+            messagingSenderId: "270058912931",
+            appId: "1:270058912931:web:c85a8889aefec013315316",
+            measurementId: "G-CF7XZZ8E2Z"
+        };
 
         // Initialize Firebase
         firebase.initializeApp(firebaseConfig);
@@ -356,10 +356,42 @@
                     // Update UI briefly
                     updateUI(user);
                     
-                    // Redirect to your Flask app route after a short delay
-                    setTimeout(() => {
-                        window.location.href = '/app';  // Redirect to your Flask app
-                    }, 2000);
+                    // Send user data to Flask to set session
+                    fetch('/auth/success', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            user: {
+                                uid: user.uid,
+                                email: user.email,
+                                displayName: user.displayName,
+                                photoURL: user.photoURL
+                            }
+                        })
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.status === 'success') {
+                            // Redirect to your Flask app route after a short delay
+                            setTimeout(() => {
+                                window.location.href = data.redirect;
+                            }, 1000);
+                        } else {
+                            // Fallback redirect if session setting fails
+                            setTimeout(() => {
+                                window.location.href = '/app';
+                            }, 1000);
+                        }
+                    })
+                    .catch((error) => {
+                        console.error('Error setting session:', error);
+                        // Fallback redirect
+                        setTimeout(() => {
+                            window.location.href = '/app';
+                        }, 1000);
+                    });
                     
                 })
                 .catch((error) => {
@@ -397,8 +429,32 @@
         auth.onAuthStateChanged((user) => {
             if (user) {
                 updateUI(user);
-                // Optional: Auto-redirect if user is already signed in
-                // window.location.href = '/app';
+                
+                // If user is already signed in, set session and redirect
+                fetch('/auth/success', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        user: {
+                            uid: user.uid,
+                            email: user.email,
+                            displayName: user.displayName,
+                            photoURL: user.photoURL
+                        }
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        // Auto-redirect if user is already signed in
+                        window.location.href = data.redirect;
+                    }
+                })
+                .catch((error) => {
+                    console.error('Error setting session:', error);
+                });
             }
         });
     </script>
