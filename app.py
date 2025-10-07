@@ -11,6 +11,40 @@ import tiktoken
 import PyPDF2
 from io import BytesIO
 
+# --- MODIFICATIONS TO app.py ---
+
+# The login page (index.html)
+@app.route("/")
+def index():
+    # If the user is already logged in, redirect them to the app
+    if 'user_id' in session:
+        return redirect(url_for('main_app'))
+        
+    # Otherwise, show the login page
+    return render_template("index.html")
+
+
+# The PROTECTED main application page (where the AI chat happens)
+@app.route("/app")
+def main_app():
+    # If the user is NOT in the session, they are not logged in.
+    if 'user_id' not in session:
+        return redirect(url_for('index')) # Redirect to the login page
+
+    # You would typically render the main app template here.
+    # For now, let's return a simple message. 
+    # **You should create a 'main.html' template here for your chat application.**
+    return f"<h1>Welcome to the App, {session.get('name', 'User')}!</h1><p>This is your secure AI chat page.</p><a href='{url_for('logout')}'>Logout</a>"
+
+
+# New Logout Route
+@app.route("/logout", methods=["POST", "GET"])
+def logout():
+    """Clears the server-side session."""
+    session.pop('user_id', None)
+    session.pop('email', None)
+    session.pop('name', None)
+    return redirect(url_for('index'))
 # Load environment variables
 load_dotenv()
 
@@ -430,4 +464,5 @@ if __name__ == '__main__':
     print(f"PDF Support: ✓ Enabled with PyPDF2")
     print(f"Server running on http://localhost:{port}")
     
+
     app.run(host='0.0.0.0', port=port, debug=debug)
