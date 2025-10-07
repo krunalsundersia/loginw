@@ -337,78 +337,75 @@
         firebase.initializeApp(firebaseConfig);
         const auth = firebase.auth();
 
-        // Google Sign In
+        // 🚨 Function to securely send the ID Token to Flask
+        function sendSecureToken(user, idToken) {
+            // Hide the sign-in button while redirecting
+            document.getElementById('googleSignIn').style.display = 'none';
+
+            fetch('/auth/google_verify', { // 🚨 NEW SECURE ENDPOINT
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    // 🚨 Sending ONLY the ID Token for server-side verification
+                    idToken: idToken 
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    // Success! Redirect to the URL sent by the Flask backend (/app)
+                    setTimeout(() => {
+                        window.location.href = data.redirect;
+                    }, 500); // Reduced delay for smoother transition
+                } else {
+                    console.error('Authentication failed on server:', data.message);
+                    alert('Authentication failed on server. Please try again.');
+                    document.getElementById('redirectMessage').classList.remove('active');
+                    document.getElementById('googleSignIn').style.display = 'flex'; // Show button again
+                }
+            })
+            .catch((error) => {
+                console.error('Error connecting to server:', error);
+                alert('Error connecting to server. Please try again.');
+                document.getElementById('redirectMessage').classList.remove('active');
+                document.getElementById('googleSignIn').style.display = 'flex'; // Show button again
+            });
+        }
+        
+        // Google Sign In Click Handler
         document.getElementById('googleSignIn').addEventListener('click', () => {
             const provider = new firebase.auth.GoogleAuthProvider();
             
             auth.signInWithPopup(provider)
                 .then((result) => {
-                    // This gives you a Google Access Token
-                    const credential = result.credential;
-                    const token = credential.accessToken;
-                    
-                    // The signed-in user info
                     const user = result.user;
                     
-                    // Show redirect message
                     document.getElementById('redirectMessage').classList.add('active');
-                    
-                    // Update UI briefly
                     updateUI(user);
                     
-                    // Send user data to Flask to set session
-                    fetch('/auth/success', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({
-                            user: {
-                                uid: user.uid,
-                                email: user.email,
-                                displayName: user.displayName,
-                                photoURL: user.photoURL
-                            }
-                        })
-                    })
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.status === 'success') {
-                            // Redirect to your Flask app route after a short delay
-                            setTimeout(() => {
-                                window.location.href = data.redirect;
-                            }, 1000);
-                        } else {
-                            // Fallback redirect if session setting fails
-                            setTimeout(() => {
-                                window.location.href = '/app';
-                            }, 1000);
-                        }
-                    })
-                    .catch((error) => {
-                        console.error('Error setting session:', error);
-                        // Fallback redirect
-                        setTimeout(() => {
-                            window.location.href = '/app';
-                        }, 1000);
+                    // 🚨 Get the secure ID Token and initiate server verification
+                    user.getIdToken().then(idToken => {
+                        sendSecureToken(user, idToken);
                     });
-                    
                 })
                 .catch((error) => {
-                    // Handle Errors here
-                    const errorCode = error.code;
                     const errorMessage = error.message;
-                    
-                    console.error("Error during sign in:", errorCode, errorMessage);
+                    console.error("Error during sign in:", errorMessage);
                     alert(`Error: ${errorMessage}`);
                 });
         });
 
-        // Sign Out
+        // Sign Out (Logout endpoint needs to be called to clear Flask session)
         document.getElementById('signOut').addEventListener('click', () => {
             auth.signOut()
                 .then(() => {
+                    // Call Flask logout endpoint to clear server session
+                    fetch('/logout', { method: 'GET' }); 
                     document.getElementById('userInfo').classList.remove('active');
+                    // Reload the page to show the login screen
+                    window.location.reload(); 
                 })
                 .catch((error) => {
                     console.error("Error during sign out:", error);
@@ -425,35 +422,17 @@
             }
         }
 
-        // Check if user is already signed in
+        // Check if user is already signed in (on page load)
         auth.onAuthStateChanged((user) => {
             if (user) {
                 updateUI(user);
                 
-                // If user is already signed in, set session and redirect
-                fetch('/auth/success', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        user: {
-                            uid: user.uid,
-                            email: user.email,
-                            displayName: user.displayName,
-                            photoURL: user.photoURL
-                        }
-                    })
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.status === 'success') {
-                        // Auto-redirect if user is already signed in
-                        window.location.href = data.redirect;
-                    }
+                // 🚨 If user is already signed in, get token and set session immediately
+                user.getIdToken().then(idToken => {
+                    sendSecureToken(user, idToken);
                 })
                 .catch((error) => {
-                    console.error('Error setting session:', error);
+                    console.error('Error getting ID Token for auto-login:', error);
                 });
             }
         });
