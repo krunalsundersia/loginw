@@ -30,17 +30,16 @@ app.secret_key = os.environ.get("SESSION_SECRET", "a_strong_and_unpredictable_se
 CORS(app)
 
 # --- ADDED: FIREBASE ADMIN INITIALIZATION ---
-# 🚨 SECURITY CRITICAL: You MUST replace "path/to/your/serviceAccountKey.json" 
-# with the actual path to the JSON file you downloaded from your Firebase Project Settings > Service Accounts.
+# 🚨 SECURITY CRITICAL: Replace the path below with the actual location of your Firebase service account JSON file.
 try:
-    cred = credentials.Certificate("path/to/your/serviceAccountKey.json") 
-    # Use a unique name if you have multiple Firebase projects initialized
+    # Assuming serviceAccountKey.json is in the same directory as app.py
+    cred = credentials.Certificate("serviceAccountKey.json") 
+    # Use a unique name for the app instance
     firebase_admin.initialize_app(cred, name="auth_backend") 
     auth_app = firebase_admin.get_app("auth_backend")
-    logger.info("Firebase Admin SDK initialized successfully for authentication.")
+    logger.info("Firebase Admin SDK initialized successfully.")
 except Exception as e:
-    logger.error(f"Error initializing Firebase Admin SDK. Did you provide the correct serviceAccountKey.json? Error: {e}")
-    # Note: In a production environment, you would exit the application here if auth fails.
+    logger.error(f"FATAL ERROR: Failed to initialize Firebase Admin SDK. Check serviceAccountKey.json path. Error: {e}")
 # --------------------------------------------
 
 # Initialize token encoding
@@ -52,7 +51,6 @@ tokens_used = 0
 KEY = os.getenv("OPENROUTER_API_KEY")
 if not KEY:
     logging.error("OPENROUTER_API_KEY missing – export it or add to .env")
-    # We will not exit here, but AI functionality will fail if the key is missing.
 
 # Define the 5 AI models with their personalities (MODELS, SYSTEM_PROMPTS, OPENROUTER_MODELS kept here)
 MODELS = {
@@ -89,24 +87,24 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 @app.route("/")
 def index():
     """Renders the login page or redirects to the app if already logged in."""
+    # This renders templates/index.html
     if 'user_id' in session:
         return redirect(url_for('main_app'))
         
     return render_template("index.html")
 
-# 🚨 NEW: SECURE ENDPOINT TO VERIFY FIREBASE TOKEN AND SET FLASK SESSION
+# 🚨 NEW: SECURE ENDPOINT to verify Firebase token and set Flask session
 @app.route("/auth/google_verify", methods=["POST"]) 
 def google_verify():
     """Verifies the Firebase ID Token sent by the client and sets the server session."""
     try:
         data = request.get_json()
-        id_token = data.get('idToken')
+        id_token = data.get('idToken') # Get the secure ID token
 
         if not id_token:
             return jsonify({"status": "error", "message": "No ID token provided"}), 400
 
         # 1. CRITICAL: VERIFY the ID Token with Google/Firebase
-        # Use the specific app instance initialized above
         decoded_token = auth.verify_id_token(id_token, app=auth_app)
         
         # 2. Set the secure Flask session
@@ -134,6 +132,7 @@ def main_app():
         return redirect(url_for('index'))
 
     # Render the main chat UI
+    # NOTE: This requires 'main.html' to be in your 'templates' folder.
     return render_template("main.html")
 
 @app.route("/logout")
@@ -142,11 +141,12 @@ def logout():
     session.pop('user_id', None)
     session.pop('email', None)
     session.pop('name', None)
+    # Redirect back to the login page
     return redirect(url_for('index'))
 
 # ------------------------------------
+# --- AI FUNCTIONALITY (Rest of your existing code remains unchanged) ---
 
-# --- AI FUNCTIONALITY (Kept Existing Code) ---
 def extract_text_from_pdf(file_content):
     """Extract text content from PDF file"""
     try:
@@ -161,7 +161,7 @@ def extract_text_from_pdf(file_content):
         return None
 
 def process_uploaded_files(files):
-    # This function is not used in the final /chat logic, but is kept for completeness
+    # This is a stub for file processing logic not fully implemented elsewhere
     file_contents = []
     
     for file in files:
@@ -207,7 +207,7 @@ def generate(bot_name: str, system: str, user: str, file_contents: list = None):
         client = OpenAI(
             base_url="https://openrouter.ai/api/v1",
             api_key=KEY,
-            timeout=60.0  # Increased timeout for file processing
+            timeout=60.0 
         )
         
         # Add file contents to the user prompt if available
@@ -235,7 +235,7 @@ def generate(bot_name: str, system: str, user: str, file_contents: list = None):
                 {"role": "user", "content": full_user_prompt}
             ],
             temperature=0.7,
-            max_tokens=1500,  # Increased for file context
+            max_tokens=1500,  
             stream=True,
         )
         
@@ -252,7 +252,6 @@ def generate(bot_name: str, system: str, user: str, file_contents: list = None):
             if chunk.choices and chunk.choices[0].finish_reason:
                 break
         
-        # Update global token count
         tokens_used += bot_tokens
         logger.info(f"Completed generation for {bot_name}, tokens used: {bot_tokens}")
         yield f"data: {json.dumps({'bot': bot_name, 'done': True, 'tokens': tokens_used})}\n\n"
@@ -280,7 +279,6 @@ def generate(bot_name: str, system: str, user: str, file_contents: list = None):
 @app.route("/asklurk", methods=["POST"])
 def asklurk():
     """Synthesize the best answer from all AI responses"""
-    # This route should also be protected in a real app
     if 'user_id' not in session:
         return jsonify(best="", error="Unauthorized"), 401
         
@@ -392,7 +390,6 @@ def upload():
 @app.route("/tokens", methods=["GET"])
 def get_tokens():
     """Endpoint to get current token usage"""
-    # This endpoint is accessible, but sensitive token data is returned
     return jsonify({
         "tokens_used": tokens_used,
         "token_limit": TOKEN_LIMIT,
@@ -403,7 +400,6 @@ def get_tokens():
 @app.route("/reset-tokens", methods=["POST"])
 def reset_tokens():
     """Endpoint to reset token counter"""
-    # This should be protected in a real app, assuming admin rights
     if 'user_id' not in session:
         return jsonify(message="Unauthorized"), 401
         
@@ -424,7 +420,6 @@ def health():
 @app.route("/chat", methods=["POST"])
 def chat():
     """Main chat endpoint for all AI models"""
-    # Protection check: Only logged-in users can chat
     if 'user_id' not in session:
         return jsonify(error="Unauthorized. Please log in."), 401
         
@@ -439,7 +434,7 @@ def chat():
         if tokens_used >= TOKEN_LIMIT:
             return jsonify(error=f"Token limit reached ({tokens_used}/{TOKEN_LIMIT})"), 429
         
-        # Process uploaded files
+        # Process uploaded files (logic kept from previous version)
         file_contents = []
         if fileUrls:
             for file_url in fileUrls:
@@ -482,7 +477,6 @@ def chat():
                         yield chunk
                         
                         try:
-                            # Check if bot is done or errored to remove it from active list
                             chunk_data = json.loads(chunk.split('data: ')[1])
                             if chunk_data.get('done') or chunk_data.get('error'):
                                 completed_bots.add(bot_name)
@@ -517,11 +511,8 @@ def chat():
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
-    # Note: debug mode should be False in production
     debug = os.environ.get('FLASK_DEBUG', 'False').lower() == 'true'
     print("Starting Pentad Chat Server...")
-    print(f"OpenRouter API Key: {'✓ Configured' if KEY else '✗ Missing'}")
-    print(f"Firebase Admin: {'✓ Initialized' if firebase_admin._apps.get('auth_backend') else '✗ Failed to Initialize'}")
     print(f"Server running on http://0.0.0.0:{port}")
     
     app.run(host='0.0.0.0', port=port, debug=debug)
